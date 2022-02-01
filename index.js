@@ -172,7 +172,7 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
                         color: "yellow",
                     });
                     cp.exec(
-                        `yarn add --dev eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev`,
+                        `yarn add --dev typescript eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev`,
                         { cwd: process.cwd() },
                         () => {
                             spinner.update({
@@ -182,6 +182,7 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
                             cp.execSync("yarn dlx husky-init --yarn2", {
                                 cwd: process.cwd(),
                             });
+
                             spinner.update({
                                 text: "Adding scripts...",
                                 color: "magenta",
