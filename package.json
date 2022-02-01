@@ -5,6 +5,7 @@
     "main": "index.js",
     "author": "MahoMuri",
     "license": "MIT",
+    "bin": "index.js",
     "private": false,
     "dependencies": {
         "nanospinner": "^1.0.0",
