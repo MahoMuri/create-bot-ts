@@ -12,3 +12,9 @@ This is a package that I use as some sort of starter template for Discord bots i
 -   husky
 -   list-staged
 -   eslit & prettier
+
+After installation run:
+
+```sh
+yarn create @eslint/config
+```
