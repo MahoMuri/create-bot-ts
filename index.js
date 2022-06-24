@@ -16,8 +16,18 @@ const NS_PER_SEC = 1e9;
 const MS_PER_NS = 1e-6;
 const time = process.hrtime();
 
-// Make the src directories
+// Make the src and child directories
 fs.mkdirSync(path.join(process.cwd(), "src"));
+fs.mkdirSync(path.join(process.cwd(), "src", "client"));
+fs.mkdirSync(path.join(process.cwd(), "src", "commands"));
+fs.mkdirSync(path.join(process.cwd(), "src", "events"));
+fs.mkdirSync(path.join(process.cwd(), "src", "utils"));
+fs.mkdirSync(path.join(process.cwd(), "src", "interfaces"));
+fs.mkdirSync(path.join(process.cwd(), "src", "models"));
+
+// Make index.ts in src and client.ts
+fs.writeFileSync(path.join(process.cwd(), "src", "index.ts"), "");
+fs.writeFileSync(path.join(process.cwd(), "src", "client", "index.ts"), "");
 
 // Declare function that writes files
 const writeFiles = (files) => {
@@ -164,61 +174,76 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
 
         cp.exec("yarn", { cwd: process.cwd() }, () => {
             cp.exec(
-                "yarn plugin import typescript",
+                "yarn add discord.js @discordjs/rest @discordjs/builders discord-api-types",
                 { cwd: process.cwd() },
                 () => {
                     spinner.update({
-                        text: "Adding necessary devDependencies",
-                        color: "yellow",
+                        text: "Adding discord dependencies",
+                        color: "blue",
                     });
                     cp.exec(
-                        `yarn add --dev eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev`,
+                        "yarn plugin import typescript",
                         { cwd: process.cwd() },
                         () => {
                             spinner.update({
-                                text: "Setting up husky...",
-                                color: "cyan",
+                                text: "Adding necessary devDependencies",
+                                color: "yellow",
                             });
-                            cp.execSync("yarn dlx husky-init --yarn2", {
-                                cwd: process.cwd(),
-                            });
-                            spinner.update({
-                                text: "Adding scripts...",
-                                color: "magenta",
-                            });
-                            const package = JSON.parse(
-                                fs.readFileSync(
-                                    path.join(process.cwd(), "package.json"),
-                                    { encoding: "utf-8" }
-                                )
-                            );
-                            package.scripts = {
-                                test: "yarn eslint",
-                                prod: "ts-node --transpile-only ./src/index.ts",
-                                dev: "ts-node-dev --respawn --transpile-only --notify --rs ./src/index.ts",
-                                prettier: "prettier ./src/**/*.ts",
-                                "prettier:fix":
-                                    "prettier --write ./src/**/*.ts",
-                                eslint: "eslint ./src/**/*.ts",
-                                "eslint:fix": "eslint --fix ./src/**/*.ts",
-                            };
-                            package["lint-staged"] = {
-                                "./src/**/*.ts": ["eslint --fix"],
-                            };
+                            cp.exec(
+                                `yarn add --dev eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev`,
+                                { cwd: process.cwd() },
+                                () => {
+                                    spinner.update({
+                                        text: "Setting up husky...",
+                                        color: "cyan",
+                                    });
+                                    cp.execSync("yarn dlx husky-init --yarn2", {
+                                        cwd: process.cwd(),
+                                    });
+                                    spinner.update({
+                                        text: "Adding scripts...",
+                                        color: "magenta",
+                                    });
+                                    const package = JSON.parse(
+                                        fs.readFileSync(
+                                            path.join(
+                                                process.cwd(),
+                                                "package.json"
+                                            ),
+                                            { encoding: "utf-8" }
+                                        )
+                                    );
+                                    package.scripts = {
+                                        test: "yarn eslint",
+                                        prod: "ts-node --transpile-only ./src/index.ts",
+                                        dev: "ts-node-dev --respawn --transpile-only --notify --rs ./src/index.ts",
+                                        prettier: "prettier ./src/**/*.ts",
+                                        "prettier:fix":
+                                            "prettier --write ./src/**/*.ts",
+                                        eslint: "eslint ./src/**/*.ts",
+                                        "eslint:fix":
+                                            "eslint --fix ./src/**/*.ts",
+                                    };
+                                    package["lint-staged"] = {
+                                        "./src/**/*.ts": ["eslint --fix"],
+                                    };
 
-                            fs.writeFileSync(
-                                path.join(process.cwd(), "package.json"),
-                                JSON.stringify(package, null, 4)
-                            );
+                                    fs.writeFileSync(
+                                        path.join(
+                                            process.cwd(),
+                                            "package.json"
+                                        ),
+                                        JSON.stringify(package, null, 4)
+                                    );
 
-                            spinner.update({
-                                text: "Generating README.md...",
-                                color: "magenta",
-                            });
+                                    spinner.update({
+                                        text: "Generating README.md...",
+                                        color: "magenta",
+                                    });
 
-                            fs.writeFileSync(
-                                path.join(process.cwd(), "README.md"),
-                                outdent`
+                                    fs.writeFileSync(
+                                        path.join(process.cwd(), "README.md"),
+                                        outdent`
                                         # ${package.name}
                                         
                                         Created with created with [create-bot-ts](https://github.com/MahoMuri/create-bot-ts)
@@ -240,16 +265,19 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
 
                                         to fully initialize eslint.
                                         `
+                                    );
+                                    const diff = process.hrtime(time);
+                                    const seconds =
+                                        (diff[0] * NS_PER_SEC +
+                                            diff[1] * MS_PER_NS) /
+                                        NS_PER_SEC;
+                                    spinner.success({
+                                        text: `Sucessfully Generated ${
+                                            package.name
+                                        } template in ${seconds.toFixed(3)}s`,
+                                    });
+                                }
                             );
-                            const diff = process.hrtime(time);
-                            const seconds =
-                                (diff[0] * NS_PER_SEC + diff[1] * MS_PER_NS) /
-                                NS_PER_SEC;
-                            spinner.success({
-                                text: `Sucessfully Generated ${
-                                    package.name
-                                } template in ${seconds.toFixed(3)}s`,
-                            });
                         }
                     );
                 }
