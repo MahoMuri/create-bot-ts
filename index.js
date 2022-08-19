@@ -174,7 +174,7 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
 
         cp.exec("yarn", { cwd: process.cwd() }, () => {
             cp.exec(
-                "yarn add discord.js @discordjs/rest @discordjs/builders discord-api-types",
+                "yarn add discord.js bufferutil erlpack zlib-sync utf-8-validate",
                 { cwd: process.cwd() },
                 () => {
                     spinner.update({
