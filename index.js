@@ -167,101 +167,124 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
                 color: "blue",
             });
             cp.exec(
-                "yarn add discord.js bufferutil erlpack zlib-sync utf-8-validate",
+                "yarn add discord.js bufferutil zlib-sync utf-8-validate",
                 { cwd: process.cwd() },
                 () => {
                     spinner.update({
-                        text: "Adding necessary devDependencies",
-                        color: "yellow",
+                        text: "Adding utility dependencies",
+                        color: "blue",
                     });
                     cp.exec(
-                        `yarn add --dev eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @types/node @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev typescript`,
-                        { cwd: process.cwd() },
+                        "yarn add consola common-tags table dotenv",
+                        {
+                            cwd: process.cwd(),
+                        },
                         () => {
                             spinner.update({
-                                text: "Setting up husky...",
-                                color: "cyan",
+                                text: "Adding necessary devDependencies",
+                                color: "yellow",
                             });
-                            cp.execSync("yarn dlx husky-init --yarn2", {
-                                cwd: process.cwd(),
-                            });
-                            spinner.update({
-                                text: "Setting up sdks...",
-                                color: "cyan",
-                            });
+                            cp.exec(
+                                `yarn add --dev eslint eslint-config-airbnb-base eslint-config-prettier eslint-import-resolver-node eslint-plugin-import eslint-plugin-prettier @typescript-eslint/eslint-plugin @types/node @typescript-eslint/parser husky lint-staged node-notifier prettier ts-node ts-node-dev typescript`,
+                                { cwd: process.cwd() },
+                                () => {
+                                    spinner.update({
+                                        text: "Setting up husky...",
+                                        color: "cyan",
+                                    });
+                                    cp.execSync("yarn dlx husky-init --yarn2", {
+                                        cwd: process.cwd(),
+                                    });
+                                    spinner.update({
+                                        text: "Setting up sdks...",
+                                        color: "cyan",
+                                    });
 
-                            cp.execSync("yarn dlx @yarnpkg/sdks vscode", {
-                                cwd: process.cwd(),
-                            });
+                                    cp.execSync(
+                                        "yarn dlx @yarnpkg/sdks vscode",
+                                        {
+                                            cwd: process.cwd(),
+                                        }
+                                    );
 
-                            spinner.update({
-                                text: "Adding scripts...",
-                                color: "magenta",
-                            });
-                            const package = JSON.parse(
-                                fs.readFileSync(
-                                    path.join(process.cwd(), "package.json"),
-                                    { encoding: "utf-8" }
-                                )
+                                    spinner.update({
+                                        text: "Adding scripts...",
+                                        color: "magenta",
+                                    });
+                                    const package = JSON.parse(
+                                        fs.readFileSync(
+                                            path.join(
+                                                process.cwd(),
+                                                "package.json"
+                                            ),
+                                            { encoding: "utf-8" }
+                                        )
+                                    );
+                                    package.scripts = {
+                                        test: "yarn eslint",
+                                        prod: "ts-node --transpile-only ./src/index.ts",
+                                        dev: "ts-node-dev --respawn --transpile-only --notify --rs ./src/index.ts",
+                                        prettier: "prettier ./src/**/*.ts",
+                                        "prettier:fix":
+                                            "prettier --write ./src/**/*.ts",
+                                        eslint: "eslint ./src/**/*.ts",
+                                        "eslint:fix":
+                                            "eslint --fix ./src/**/*.ts",
+                                    };
+                                    package["lint-staged"] = {
+                                        "./src/**/*.ts": ["eslint --fix"],
+                                    };u
+
+                                    fs.writeFileSync(
+                                        path.join(
+                                            process.cwd(),
+                                            "package.json"
+                                        ),
+                                        JSON.stringify(package, null, 4)
+                                    );
+
+                                    spinner.update({
+                                        text: "Generating README.md...",
+                                        color: "magenta",
+                                    });
+
+                                    fs.writeFileSync(
+                                        path.join(process.cwd(), "README.md"),
+                                        outdent`
+                                    # ${package.name}
+                                    
+                                    Created with created with [create-bot-ts](https://github.com/MahoMuri/create-bot-ts)
+                                    
+                                    Based from [create-ts-pro](https://github.com/Milo123456789/create-ts-pro)
+                                    
+                                    Features:
+                                    - Yarn PnP
+                                    - Husky
+                                    - ESlint and prettier
+                                    - TypeScript
+                                    - Version Plugin
+                                    - Upgrade-interactive plugin
+    
+                                    Next Steps, run:
+                                    \`\`\`sh
+                                    yarn create @eslint/config
+                                    \`\`\`
+    
+                                    to fully initialize eslint.
+                                    `
+                                    );
+                                    const diff = process.hrtime(time);
+                                    const seconds =
+                                        (diff[0] * NS_PER_SEC +
+                                            diff[1] * MS_PER_NS) /
+                                        NS_PER_SEC;
+                                    spinner.success({
+                                        text: `Successfully Generated ${
+                                            package.name
+                                        } template in ${seconds.toFixed(3)}s`,
+                                    });
+                                }
                             );
-                            package.scripts = {
-                                test: "yarn eslint",
-                                prod: "ts-node --transpile-only ./src/index.ts",
-                                dev: "ts-node-dev --respawn --transpile-only --notify --rs ./src/index.ts",
-                                prettier: "prettier ./src/**/*.ts",
-                                "prettier:fix":
-                                    "prettier --write ./src/**/*.ts",
-                                eslint: "eslint ./src/**/*.ts",
-                                "eslint:fix": "eslint --fix ./src/**/*.ts",
-                            };
-                            package["lint-staged"] = {
-                                "./src/**/*.ts": ["eslint --fix"],
-                            };
-
-                            fs.writeFileSync(
-                                path.join(process.cwd(), "package.json"),
-                                JSON.stringify(package, null, 4)
-                            );
-
-                            spinner.update({
-                                text: "Generating README.md...",
-                                color: "magenta",
-                            });
-
-                            fs.writeFileSync(
-                                path.join(process.cwd(), "README.md"),
-                                outdent`
-                                # ${package.name}
-                                
-                                Created with created with [create-bot-ts](https://github.com/MahoMuri/create-bot-ts)
-                                
-                                Based from [create-ts-pro](https://github.com/Milo123456789/create-ts-pro)
-                                
-                                Features:
-                                - Yarn PnP
-                                - Husky
-                                - ESlint and prettier
-                                - TypeScript
-                                - Version Plugin
-                                - Upgrade-interactive plugin
-
-                                Next Steps, run:
-                                \`\`\`sh
-                                yarn create @eslint/config
-                                \`\`\`
-
-                                to fully initialize eslint.
-                                `
-                            );
-                            const diff = process.hrtime(time);
-                            const seconds =
-                                (diff[0] * NS_PER_SEC + diff[1] * MS_PER_NS) /
-                                NS_PER_SEC;
-                            spinner.success({
-                                text: `Successfully Generated ${
-                                    package.name
-                                } template in ${seconds.toFixed(3)}s`,
-                            });
                         }
                     );
                 }
