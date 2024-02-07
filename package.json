@@ -1,11 +1,13 @@
 {
     "name": "create-bot-ts",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "\"MahoMuri's personal template for Discord Bots\"",
     "main": "index.js",
     "author": "MahoMuri",
     "license": "MIT",
-    "bin": "index.js",
+    "bin": {
+        "create-bot-ts": "index.js"
+    },
     "private": false,
     "dependencies": {
         "nanospinner": "^1.0.0",
