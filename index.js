@@ -233,7 +233,7 @@ cp.exec("npm init -y", { cwd: process.cwd() }, () => {
                                     };
                                     package["lint-staged"] = {
                                         "./src/**/*.ts": ["eslint --fix"],
-                                    };u
+                                    };
 
                                     fs.writeFileSync(
                                         path.join(
