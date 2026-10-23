@@ -1,6 +1,6 @@
 {
     "name": "create-bot-ts",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "description": "MahoMuri's personal template for Discord bots",
     "main": "index.js",
     "author": "MahoMuri",
