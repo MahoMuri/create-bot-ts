@@ -10,13 +10,13 @@ src/
 ├── client/         # BotClient class - extends Client; init() loads + logs in
 ├── commands/       # slash commands, auto-loaded from this folder
 ├── events/         # event handlers, auto-loaded from this folder
-├── utils/          # shared helpers
 ├── interfaces/     # shared types: Command, BotEvent
-└── models/         # data models
+└── utils/          # module loaders: loadCommands(), loadEvents()
 ```
 
 - Strict, type-driven TypeScript — `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `NodeNext` module resolution
-- `BotClient extends Client` with `init()` — loads every command from `src/commands` and every event from `src/events`, then logs in
+- Named exports only — every command/event file exports a single `const` named after the file (`ping.ts` → `ping`), so imports autocomplete and nothing depends on a default export
+- `BotClient extends Client` with `init()` — calls `loadCommands` + `loadEvents` from `src/utils`, then logs in
 - discord.js v14 + `bufferutil` / `zlib-sync`, `dotenv`, `consola`, `common-tags`, `table`
 - ESLint 9 **flat config** with type-aware linting from `typescript-eslint` (works out of the box, no manual config step)
 - Prettier + Husky + lint-staged pre-commit hook

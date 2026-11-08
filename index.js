@@ -218,20 +218,17 @@ const ESLINT_CONFIG = outdent`
 `;
 
 const CLIENT_TS = outdent`
-    import { readdir } from 'node:fs/promises';
     import { dirname, join } from 'node:path';
-    import { fileURLToPath, pathToFileURL } from 'node:url';
+    import { fileURLToPath } from 'node:url';
 
-    import { consola } from 'consola';
     import { Client, Collection } from 'discord.js';
 
-    import type { ClientEvents, ClientOptions } from 'discord.js';
+    import type { ClientOptions } from 'discord.js';
+
+    import { loadCommands } from '../utils/loadCommands.js';
+    import { loadEvents } from '../utils/loadEvents.js';
 
     import type { Command } from '../interfaces/command.js';
-    import type { BotEvent } from '../interfaces/event.js';
-
-    /** Dev runs \`.ts\` sources, a build runs \`.js\`. Load both. */
-    const isModuleFile = (file: string): boolean => file.endsWith('.ts') || file.endsWith('.js');
 
     export class BotClient extends Client {
       /** Commands loaded from src/commands, keyed by command name. */
@@ -249,72 +246,14 @@ const CLIENT_TS = outdent`
         this.eventsPath = join(directory, '..', 'events');
       }
 
-      /** Loads all commands + events, then logs the bot in. */
+      /** Loads every command + event, then logs the bot in. */
       public async init(token: string): Promise<void> {
-        await Promise.all([this.loadCommands(), this.loadEvents()]);
+        await Promise.all([
+          loadCommands(this.commandsPath, this.commands),
+          loadEvents(this, this.eventsPath),
+        ]);
+
         await super.login(token);
-      }
-
-      /** Imports every file in src/commands into the commands collection. */
-      public async loadCommands(): Promise<void> {
-        const files = (await readdir(this.commandsPath)).filter((file) => isModuleFile(file));
-
-        for (const file of files) {
-          try {
-            const command = await this.importDefault<Command>(this.commandsPath, file);
-            if (command === undefined) {
-              consola.warn(\`[commands] skipping "\${file}": missing default export\`);
-              continue;
-            }
-            this.commands.set(command.data.name, command);
-          } catch (error) {
-            consola.error(\`[commands] failed to load "\${file}"\`);
-            consola.error(error);
-          }
-        }
-
-        consola.info(\`[commands] loaded \${this.commands.size} command(s)\`);
-      }
-
-      /** Imports every file in src/events and attaches it to the client. */
-      public async loadEvents(): Promise<void> {
-        let registered = 0;
-        const files = (await readdir(this.eventsPath)).filter((file) => isModuleFile(file));
-
-        for (const file of files) {
-          try {
-            const botEvent = await this.importDefault<BotEvent<keyof ClientEvents>>(
-              this.eventsPath,
-              file,
-            );
-            if (botEvent === undefined) {
-              consola.warn(\`[events] skipping "\${file}": missing default export\`);
-              continue;
-            }
-            if (botEvent.once) {
-              this.once(botEvent.name, (...args: ClientEvents[typeof botEvent.name]) => {
-                void botEvent.execute(...args);
-              });
-            } else {
-              this.on(botEvent.name, (...args: ClientEvents[typeof botEvent.name]) => {
-                void botEvent.execute(...args);
-              });
-            }
-            registered += 1;
-          } catch (error) {
-            consola.error(\`[events] failed to load "\${file}"\`);
-            consola.error(error);
-          }
-        }
-
-        consola.info(\`[events] registered \${registered} event(s)\`);
-      }
-
-      /** Dynamic import of a default export. Uses a file URL to work on all platforms. */
-      private async importDefault<T>(folder: string, file: string): Promise<T | undefined> {
-        const target = pathToFileURL(join(folder, file)).href;
-        const module = (await import(target)) as { default?: T };
-        return module.default;
       }
     }
 `;
@@ -338,19 +277,161 @@ const EVENT_INTERFACE_TS = outdent`
     }
 `;
 
+const MODULES_TS = outdent`
+    import { readdir } from 'node:fs/promises';
+    import { join, parse } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+
+    /** Dev runs \`.ts\` sources, a build runs \`.js\`. Accept both. */
+    export const isModuleFile = (file: string): boolean => file.endsWith('.ts') || file.endsWith('.js');
+
+    /** \`ping.ts\` -> \`ping\`: the named export every module is expected to provide. */
+    export const moduleName = (file: string): string => parse(file).name;
+
+    /**
+     * Lists the loadable files in \`folder\`, sorted so the load order stays stable
+     * instead of depending on the order the filesystem hands entries back.
+     */
+    export const listModules = async (folder: string): Promise<string[]> =>
+      (await readdir(folder)).filter(isModuleFile).sort();
+
+    /** Imports a module namespace. A file URL keeps this working on every platform. */
+    export const importModule = async (
+      folder: string,
+      file: string,
+    ): Promise<Record<string, unknown>> => {
+      const target = pathToFileURL(join(folder, file)).href;
+      return (await import(target)) as Record<string, unknown>;
+    };
+
+    /**
+     * Picks the value a module exports under \`name\`, falling back to the first export
+     * that \`isModule\` accepts. The convention is that \`ping.ts\` exports \`ping\`, but a
+     * mismatch still loads instead of silently registering nothing.
+     */
+    export const resolveExport = <T>(
+      loaded: Record<string, unknown>,
+      name: string,
+      isModule: (value: unknown) => value is T,
+    ): T | undefined => {
+      const named = loaded[name];
+      if (isModule(named)) return named;
+      return Object.values(loaded).find(isModule);
+    };
+`;
+
+const LOAD_COMMANDS_TS = outdent`
+    import { consola } from 'consola';
+
+    import type { Collection } from 'discord.js';
+
+    import type { Command } from '../interfaces/command.js';
+
+    import { importModule, listModules, moduleName, resolveExport } from './modules.js';
+
+    /** A module is a command when it exposes both \`data\` and \`execute\`. */
+    const isCommand = (value: unknown): value is Command =>
+      typeof value === 'object' && value !== null && 'data' in value && 'execute' in value;
+
+    /**
+     * Imports every command in \`folder\` into \`commands\`, keyed by \`data.name\`.
+     * A broken file is logged and skipped so one bad command never stops the bot.
+     */
+    export const loadCommands = async (
+      folder: string,
+      commands: Collection<string, Command>,
+    ): Promise<Collection<string, Command>> => {
+      for (const file of await listModules(folder)) {
+        const name = moduleName(file);
+
+        try {
+          const loaded = await importModule(folder, file);
+          const command = resolveExport(loaded, name, isCommand);
+
+          if (command === undefined) {
+            consola.warn(\`[commands] skipping "\${file}": no "\${name}" command export\`);
+            continue;
+          }
+
+          commands.set(command.data.name, command);
+        } catch (error) {
+          consola.error(\`[commands] failed to load "\${file}"\`);
+          consola.error(error);
+        }
+      }
+
+      consola.info(\`[commands] loaded \${commands.size} command(s)\`);
+
+      return commands;
+    };
+`;
+
+const LOAD_EVENTS_TS = outdent`
+    import { consola } from 'consola';
+
+    import type { Client, ClientEvents } from 'discord.js';
+
+    import type { BotEvent } from '../interfaces/event.js';
+
+    import { importModule, listModules, moduleName, resolveExport } from './modules.js';
+
+    /** A module is an event when it exposes both \`name\` and \`execute\`. */
+    const isBotEvent = (value: unknown): value is BotEvent<keyof ClientEvents> =>
+      typeof value === 'object' && value !== null && 'name' in value && 'execute' in value;
+
+    /**
+     * Registers every event in \`folder\` on \`client\`, honouring \`once\`.
+     * A broken file is logged and skipped so one bad handler never stops the bot.
+     */
+    export const loadEvents = async (client: Client, folder: string): Promise<number> => {
+      let registered = 0;
+
+      for (const file of await listModules(folder)) {
+        const name = moduleName(file);
+
+        try {
+          const loaded = await importModule(folder, file);
+          const botEvent = resolveExport(loaded, name, isBotEvent);
+
+          if (botEvent === undefined) {
+            consola.warn(\`[events] skipping "\${file}": no "\${name}" event export\`);
+            continue;
+          }
+
+          if (botEvent.once) {
+            client.once(botEvent.name, (...args: ClientEvents[typeof botEvent.name]) => {
+              void botEvent.execute(...args);
+            });
+          } else {
+            client.on(botEvent.name, (...args: ClientEvents[typeof botEvent.name]) => {
+              void botEvent.execute(...args);
+            });
+          }
+
+          registered += 1;
+        } catch (error) {
+          consola.error(\`[events] failed to load "\${file}"\`);
+          consola.error(error);
+        }
+      }
+
+      consola.info(\`[events] registered \${registered} event(s)\`);
+
+      return registered;
+    };
+`;
+
 const PING_COMMAND_TS = outdent`
     import { SlashCommandBuilder } from 'discord.js';
 
     import type { Command } from '../interfaces/command.js';
 
-    const ping: Command = {
+    export const ping: Command = {
       data: new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
       async execute(interaction) {
         await interaction.reply({ content: 'Pong!' });
       },
     };
-
-    export default ping;
 `;
 
 const READY_EVENT_TS = outdent`
@@ -359,15 +440,13 @@ const READY_EVENT_TS = outdent`
 
     import type { BotEvent } from '../interfaces/event.js';
 
-    const ready: BotEvent<Events.ClientReady> = {
+    export const ready: BotEvent<Events.ClientReady> = {
       name: Events.ClientReady,
       once: true,
       execute(client) {
         consola.success(\`Logged in as \${client.user.username}\`);
       },
     };
-
-    export default ready;
 `;
 
 const INTERACTION_CREATE_TS = outdent`
@@ -377,7 +456,7 @@ const INTERACTION_CREATE_TS = outdent`
     import type { BotClient } from '../client/index.js';
     import type { BotEvent } from '../interfaces/event.js';
 
-    const interactionCreate: BotEvent<Events.InteractionCreate> = {
+    export const interactionCreate: BotEvent<Events.InteractionCreate> = {
       name: Events.InteractionCreate,
       async execute(interaction) {
         if (!interaction.isChatInputCommand()) return;
@@ -405,8 +484,6 @@ const INTERACTION_CREATE_TS = outdent`
         }
       },
     };
-
-    export default interactionCreate;
 `;
 
 const INDEX_TS = outdent`
@@ -475,16 +552,18 @@ const README = outdent`
     ├── client/         # BotClient class - extends Client; init() loads + logs in
     ├── commands/       # slash commands, auto-loaded from this folder
     ├── events/         # event handlers, auto-loaded from this folder
-    ├── utils/          # shared helpers
     ├── interfaces/     # shared types: Command, BotEvent
-    └── models/         # data models
+    └── utils/          # module loaders: loadCommands(), loadEvents(), resolveExport()
     \`\`\`
 
     ## How it works
 
-    - Every default export in \`src/commands\` is loaded into \`client.commands\` as a \`Command\`.
-    - Every default export in \`src/events\` is registered as an event listener through the \`BotEvent\` interface.
-    - \`client.init(token)\` wires everything up and calls \`client.login(token)\`.
+    - Every file in \`src/commands\` exports one named \`Command\` (\`ping.ts\` -> \`ping\`).
+      \`loadCommands\` (\`src/utils/loadCommands.ts\`) imports them into \`client.commands\`,
+      keyed by \`data.name\`.
+    - Every file in \`src/events\` exports one named \`BotEvent\` (\`ready.ts\` -> \`ready\`).
+      \`loadEvents\` (\`src/utils/loadEvents.ts\`) registers them, honouring \`once\`.
+    - \`client.init(token)\` runs both loaders, then calls \`client.login(token)\`.
 
     Each command is a \`data\` (\`SlashCommandBuilder\`) + \`execute\` pair. To make slash
     commands show up in your server, register each command's \`data\` JSON with the
@@ -527,7 +606,6 @@ const main = async () => {
             "src/events",
             "src/utils",
             "src/interfaces",
-            "src/models",
         ]) {
             fs.mkdirSync(path.join(process.cwd(), dir), { recursive: true });
         }
@@ -543,8 +621,9 @@ const main = async () => {
             },
             { path: "src/interfaces/command.ts", content: COMMAND_INTERFACE_TS },
             { path: "src/interfaces/event.ts", content: EVENT_INTERFACE_TS },
-            { path: "src/utils/.gitkeep", content: "" },
-            { path: "src/models/.gitkeep", content: "" },
+            { path: "src/utils/modules.ts", content: MODULES_TS },
+            { path: "src/utils/loadCommands.ts", content: LOAD_COMMANDS_TS },
+            { path: "src/utils/loadEvents.ts", content: LOAD_EVENTS_TS },
         ]);
     });
 
